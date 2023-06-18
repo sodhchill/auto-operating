@@ -1,0 +1,50 @@
+name: edgegap
+
+on:
+  push:
+    branches:
+      - edgegap
+  # schedule:
+  #   - cron: "13 * * * *"
+  workflow_dispatch:
+
+env:
+  SCRIPT_NAME: edgegap
+  API_SCRIPT: github_api.sh
+
+jobs:
+  build:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ACCOUNT_SECRET: ${{ fromJSON(vars.EDGEGAP) }}
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v3
+
+      - name: Download script and cookies from private repo
+        run: |
+          source scripts/${{ env.API_SCRIPT }}
+          
+          download_file "${{ env.SCRIPT_NAME }}.js" "${{ env.SCRIPT_NAME }}.js" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+          
+          if [ -f "${{ env.SCRIPT_NAME }}.js" ]; then
+            echo "Script file ${{ env.SCRIPT_NAME }}.js downloaded successfully"
+          else
+            echo "Failed to download script file ${{ env.SCRIPT_NAME }}.js"
+          fi
+      - name: Set up WARP
+        uses: fscarmen/warp-on-actions@v1.4
+        with:
+          stack: dual        # Optional. Support [ ipv4, ipv6, dual ]. Default is dual.
+          mode: client    # Optional. Support [ wireguard, client ]. Default is wireguard.
+
+      - name: Run node script
+        run: node ${{ env.SCRIPT_NAME }}.js
+        env:
+          ACCOUNT_SECRET: ${{ secrets[matrix.ACCOUNT_SECRET] }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID_FREQUENT }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+
