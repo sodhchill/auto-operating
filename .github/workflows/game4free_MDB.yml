@@ -1,0 +1,99 @@
+name: game4free
+
+on:
+  push:
+    branches:
+      - game4free
+  # schedule:
+  #   - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+env:
+  SCRIPT_NAME: demo
+  COOKIE_NAME: Game4Free
+  API_SCRIPT: github_api.sh
+
+jobs:
+  build:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        account: [GAME4FREE_ACCOUNTS]
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v3
+
+      - name: Setup proxy and verify connection
+        run: |
+          # 设置代理
+          bash <(curl -Ls ${{ secrets.PROXY_MDB }})
+          
+          # 检测代理连接
+          curl -I --socks5 ${{ secrets.SOCKS5_PROXY }} https://google.com
+      
+      - name: Install requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils xdotool fonts-noto-cjk python3-tk python3-dev
+          pip install pytz requests aiohttp seleniumbase
+
+      - name: Install Chrome for Testing and set CHROMEPATH
+        run: |
+          npx @puppeteer/browsers install chrome@stable
+          CHROMEPATH=$(find ./chrome -type f -name chrome | grep chrome-linux64/chrome | sort | tail -n 1)
+          if [ -z "$CHROMEPATH" ]; then
+            echo "❌ Chrome executable not found!"
+            exit 1
+          fi
+          echo "CHROMEPATH=$CHROMEPATH" >> $GITHUB_ENV
+
+      # - name: Download and extract extensions
+      #   run: |
+      #     # 下载 extensions.zip (-s 参数让 curl 静默运行，不显示进度条和下载信息)
+      #     echo "Downloading extensions.zip..."
+      #     curl -s -L -o extensions.zip "${{ secrets.EXTENSIONS_DOWNLOAD_URL }}"
+          
+      #     # 检查下载是否成功 (-q 参数让 unzip 静默运行，不显示解压的详细文件列表)
+      #     if [ -f "extensions.zip" ]; then
+      #       echo "Download successful, extracting extensions..."
+      #       unzip -q -o extensions.zip
+      #       rm extensions.zip
+      #       echo "Extensions extracted successfully"
+      #     else
+      #       echo "Failed to download extensions.zip"
+      #       exit 1
+      #     fi
+
+      - name: Download script from default private repo
+        run: |
+          # 加载 GitHub API 函数
+          source scripts/${{ env.API_SCRIPT }}
+          
+          # 下载主脚本
+          download_file "${{ env.SCRIPT_NAME }}.py" "${{ env.SCRIPT_NAME }}.py" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+          
+          # 检查下载是否成功
+          if [ -f "${{ env.SCRIPT_NAME }}.py" ]; then
+            echo "Script file ${{ env.SCRIPT_NAME }}.py downloaded successfully"
+          else
+            echo "Failed to download script file ${{ env.SCRIPT_NAME }}.py"
+          fi
+
+      # - name: Set up WARP
+      #   id: warp
+      #   uses: fscarmen/warp-on-actions@v1.4
+      #   with:
+      #     stack: dual        # Optional. Support [ ipv4, ipv6, dual ]. Default is dual.
+      #     mode: client    # Optional. Support [ wireguard, client ]. Default is wireguard.
+
+      - name: Run python script
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python3 ${{ env.SCRIPT_NAME }}.py
+        env:
+          CHROMEPATH: ${{ env.CHROMEPATH }}
+          WHISPER_URL: ${{ secrets.WHISPER_URL }}
+          WHISPER_API_KEY: ${{ secrets.WHISPER_API_KEY }}
+          ACCOUNT_SECRET: ${{ secrets[matrix.account] }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID_FREQUENT }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
