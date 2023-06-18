@@ -1,8 +1,8 @@
 name: host2play
 
 on:
-  # schedule:
-  #   - cron: "4 */6 * * *"
+  schedule:
+    - cron: "4 */8 * * *"
   workflow_dispatch:
 
 env:
@@ -76,14 +76,14 @@ jobs:
             echo "Failed to download script file ${{ env.SCRIPT_NAME }}.py"
           fi
 
-      - name: Clone storage private repo as tmp directory
-        run: |
-          # 配置 Git 用户信息
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      # - name: Clone storage private repo as tmp directory
+      #   run: |
+      #     # 配置 Git 用户信息
+      #     git config --global user.name "github-actions[bot]"
+      #     git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # 直接克隆存储私库为 tmp 目录
-          git clone "https://x-access-token:${{ env.STORAGE_ACCESS_TOKEN }}@github.com/${{ secrets.PRIVATE_REPO_OWNER }}/${{ env.STORAGE_REPO_NAME }}.git" tmp
+      #     # 直接克隆存储私库为 tmp 目录
+      #     git clone "https://x-access-token:${{ env.STORAGE_ACCESS_TOKEN }}@github.com/${{ secrets.PRIVATE_REPO_OWNER }}/${{ env.STORAGE_REPO_NAME }}.git" tmp
 
       - name: Run python script
         run: python3 ${{ env.SCRIPT_NAME }}.py
@@ -92,27 +92,27 @@ jobs:
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
 
-      - name: Update tmp directory in private repo and reset history
-        run: |
-          # 直接进入 tmp 目录
-          cd tmp
+      # - name: Update tmp directory in private repo and reset history
+      #   run: |
+      #     # 直接进入 tmp 目录
+      #     cd tmp
           
-          # 静默添加所有更改
-          git add . > /dev/null 2>&1
+      #     # 静默添加所有更改
+      #     git add . > /dev/null 2>&1
           
-          # 静默提交更改
-          git commit -m "Update tmp directory: $(date -u)" > /dev/null 2>&1
+      #     # 静默提交更改
+      #     git commit -m "Update tmp directory: $(date -u)" > /dev/null 2>&1
           
-          # 静默创建孤立分支来重置历史
-          git checkout --orphan temp_branch > /dev/null 2>&1
-          git add . > /dev/null 2>&1
-          git commit -m "Fresh start with updated tmp directory: $(date -u)" > /dev/null 2>&1
+      #     # 静默创建孤立分支来重置历史
+      #     git checkout --orphan temp_branch > /dev/null 2>&1
+      #     git add . > /dev/null 2>&1
+      #     git commit -m "Fresh start with updated tmp directory: $(date -u)" > /dev/null 2>&1
           
-          # 静默删除主分支并重命名临时分支
-          git branch -D main > /dev/null 2>&1
-          git branch -m main > /dev/null 2>&1
+      #     # 静默删除主分支并重命名临时分支
+      #     git branch -D main > /dev/null 2>&1
+      #     git branch -m main > /dev/null 2>&1
           
-          # 静默强制推送到主分支，完全重置历史
-          git push -f origin main > /dev/null 2>&1
+      #     # 静默强制推送到主分支，完全重置历史
+      #     git push -f origin main > /dev/null 2>&1
           
-          echo "Successfully updated tmp directory and completely reset history in tmp storage private repo"
+      #     echo "Successfully updated tmp directory and completely reset history in tmp storage private repo"

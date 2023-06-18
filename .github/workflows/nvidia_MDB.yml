@@ -1,0 +1,55 @@
+name: nvidia
+
+on:
+  schedule:
+    - cron: "42 */8 * * *"
+  workflow_dispatch:
+
+env:
+  SCRIPT_NAME: nvidia
+  API_SCRIPT: github_api.sh
+
+jobs:
+  build:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ACCOUNT_SECRET: ${{ fromJSON(vars.NVIDIA) }}
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v3
+
+      - name: Setup proxy and verify connection
+        run: |
+          # 设置代理
+          bash <(curl -Ls ${{ secrets.PROXY_MDB }})
+          
+          # 检测代理连接
+          curl --socks5 127.0.0.1:8081 https://ifconfig.co/json
+
+      - name: Install dependencies
+        run: pip install requests[socks] pytz  paramiko
+
+      - name: Download script and cookies from private repo
+        run: |
+          # 加载 GitHub API 函数
+          source scripts/${{ env.API_SCRIPT }}
+          
+          # 下载主脚本
+          download_file "${{ env.SCRIPT_NAME }}.py" "${{ env.SCRIPT_NAME }}.py" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+          
+          # 检查下载是否成功
+          if [ -f "${{ env.SCRIPT_NAME }}.py" ]; then
+            echo "Script file ${{ env.SCRIPT_NAME }}.py downloaded successfully"
+          else
+            echo "Failed to download script file ${{ env.SCRIPT_NAME }}.py"
+          fi
+
+      - name: Run python script
+        run: python3 ${{ env.SCRIPT_NAME }}.py
+        env:
+          ACCOUNT_SECRET: ${{ secrets[matrix.ACCOUNT_SECRET] }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
