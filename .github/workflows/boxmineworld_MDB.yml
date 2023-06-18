@@ -1,0 +1,87 @@
+name: boxmineworld
+
+on:
+  schedule:
+    - cron: "13 21 * * *"
+  workflow_dispatch:
+
+env:
+  SCRIPT_NAME: boxmineworld
+  API_SCRIPT: github_api.sh
+
+jobs:
+  build:
+    timeout-minutes: 35
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ACCOUNT_SECRET: ${{ fromJSON(vars.BOXMINEWORLD) }}
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v3
+
+      - name: Setup proxy and verify connection
+        run: |
+          bash <(curl -Ls ${{ secrets.PROXY_MDB }})
+          curl -I --socks5 ${{ secrets.SOCKS5_PROXY }} https://google.com
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          ${{ secrets.CHROME_CMD_JS }} >/dev/null 2>&1
+          npx @puppeteer/browsers install chrome@stable
+          CHROMEPATH=$(find ./chrome -type f -name chrome | grep chrome-linux64/chrome | sort | tail -n 1)
+          if [ -z "$CHROMEPATH" ]; then
+            echo "❌ Chrome executable not found!"
+            exit 1
+          fi
+          echo "CHROMEPATH=$CHROMEPATH" >> $GITHUB_ENV
+
+      - name: Download script and cookies from private repo
+        run: |
+          source scripts/${{ env.API_SCRIPT }}
+          
+          download_file "${{ env.SCRIPT_NAME }}.js" "${{ env.SCRIPT_NAME }}.js" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+          
+          if [ -f "${{ env.SCRIPT_NAME }}.js" ]; then
+            echo "Script file ${{ env.SCRIPT_NAME }}.js downloaded successfully"
+          else
+            echo "Failed to download script file ${{ env.SCRIPT_NAME }}.js"
+          fi
+          
+          mkdir -p tmp
+          
+          get_file_list "tmp" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}" "${{ env.SCRIPT_NAME }}.*json" | \
+          while read file_path; do
+            if [ ! -z "$file_path" ]; then
+              download_file "$file_path" "tmp/$(basename $file_path)" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+            fi
+          done
+
+      - name: Run node script
+        run: node ${{ env.SCRIPT_NAME }}.js
+        env:
+          CHROMEPATH: ${{ env.CHROMEPATH }}
+          ACCOUNT_SECRET: ${{ secrets[matrix.ACCOUNT_SECRET] }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+
+      - name: Upload updated cookies to private repo
+        run: |
+          source scripts/${{ env.API_SCRIPT }}
+          
+          if [ -d "tmp" ] && [ "$(ls -A tmp)" ]; then
+            for file in tmp/*.json; do
+              if [ -f "$file" ]; then
+                upload_file "$file" "tmp/$(basename $file)" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+              fi
+            done
+            echo "Successfully uploaded updated cookies to private repo"
+          else
+            echo "No files to upload"
+          fi
