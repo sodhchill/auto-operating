@@ -1,0 +1,96 @@
+name: sap
+
+on:
+  push:
+    branches:
+      - sap
+  # schedule:
+  #   - cron: "01,20 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ACCOUNT_SECRET: ${{ fromJSON(vars.SAP) }}
+    steps:
+      - name: Setup Cloud Foundry CLI
+        run: |
+          version=$(curl -s https://api.github.com/repos/cloudfoundry/cli/releases/latest | jq -r .tag_name)
+          filename="cf8-cli_${version#v}_linux_x86-64.tgz"
+          url="https://github.com/cloudfoundry/cli/releases/download/${version}/${filename}"
+          echo "Downloading CF CLI: $url"
+          curl -fLO "$url" || { echo "下载失败"; exit 1; }
+          file "$filename" | grep -q 'gzip compressed data' || { echo "文件格式错误"; exit 1; }
+          tar -xzf "$filename"
+          chmod +x cf8
+
+      - name: Deploy Single Application from manifest
+        shell: bash
+        run: |
+          CF_VERBOSE=false
+          echo "🔧 CF_VERBOSE=$CF_VERBOSE → $( [ "$CF_VERBOSE" = true ] && echo '显示详细日志' || echo '静默模式' )"
+
+          run_cf() {
+            if [ "$CF_VERBOSE" = true ]; then
+              ./cf8 "$@"
+            else
+              ./cf8 "$@" >/dev/null 2>&1
+            fi
+          }
+
+          # 提取基础信息
+          CONFIG_JSON='${{ secrets[matrix.ACCOUNT_SECRET] }}'
+          CF_API=$(echo "$CONFIG_JSON" | jq -r '.region_api')
+          EMAIL=$(echo "$CONFIG_JSON" | jq -r '.credentials.email')
+          PASSWORD=$(echo "$CONFIG_JSON" | jq -r '.credentials.password')
+          REPO_URL=$(echo "$CONFIG_JSON" | jq -r '.repo_url')
+          MANIFEST_B64=$(echo "$CONFIG_JSON" | jq -r '.manifest')
+          CFIGNORE_B64=$(echo "$CONFIG_JSON" | jq -r '.cfignore // empty')
+
+          echo "::add-mask::$EMAIL"
+          echo "::add-mask::$PASSWORD"
+
+          echo "📝 写入 manifest.yml"
+          echo "$MANIFEST_B64" | base64 -d > manifest.yml
+          APP_NAME=$(yq e '.applications[0].name' manifest.yml)
+
+          echo "🔐 Logging in to Cloud Foundry..."
+          run_cf login -a "$CF_API" -u "$EMAIL" -p "$PASSWORD" || { echo "❌ 登录失败"; exit 1; }
+
+          echo "🔄 保活处理: $APP_NAME"
+
+          if run_cf app "$APP_NAME"; then
+            echo "尝试启动已存在应用: $APP_NAME"
+            if run_cf start "$APP_NAME"; then
+              echo "✅ 启动成功: $APP_NAME"
+              exit 0
+            else
+              echo "⚠️ 启动失败，尝试重新部署: $APP_NAME"
+            fi
+          else
+            echo "📦 应用不存在，创建新实例: $APP_NAME"
+          fi
+
+          echo "📦 克隆仓库"
+          git clone --depth=1 "$REPO_URL" app || { echo "❌ 克隆失败"; exit 1; }
+
+          echo "📄 移动 manifest.yml 到 app/"
+          mv manifest.yml app/manifest.yml
+
+          if [ -n "$CFIGNORE_B64" ]; then
+            echo "📄 写入 .cfignore 到 app/"
+            echo "$CFIGNORE_B64" | base64 -d > app/.cfignore
+          fi
+
+          echo "🚀 执行 cf push \"$APP_NAME\" -f app/manifest.yml -p app"
+          if run_cf push "$APP_NAME" -f app/manifest.yml -p app; then
+            echo "✅ 部署成功: $APP_NAME"
+          else
+            echo "❌ 部署失败: $APP_NAME"
+            exit 1
+          fi
+

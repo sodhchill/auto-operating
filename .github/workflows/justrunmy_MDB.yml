@@ -1,0 +1,105 @@
+name: justrunmy
+
+on:
+  # schedule:
+  #   - cron: "11 21 * * *"
+  workflow_dispatch:
+
+env:
+  SCRIPT_NAME: demo
+  COOKIE_NAME: justrunmy
+  API_SCRIPT: github_api.sh
+
+jobs:
+  build:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        account: [JUSTRUNMY_ACCOUNTS]
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v3
+
+      - name: Setup proxy and verify connection
+        run: |
+          bash <(curl -Ls ${{ secrets.PROXY_MDB }})
+          curl -I --socks5 ${{ secrets.SOCKS5_PROXY }} https://google.com
+      
+      - name: Install requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils xdotool fonts-noto-cjk python3-tk python3-dev
+          pip install pytz requests aiohttp seleniumbase
+
+      - name: Install Chrome for Testing and set CHROMEPATH
+        run: |
+          npx @puppeteer/browsers install chrome@stable
+          CHROMEPATH=$(find ./chrome -type f -name chrome | grep chrome-linux64/chrome | sort | tail -n 1)
+          if [ -z "$CHROMEPATH" ]; then
+            echo "❌ Chrome executable not found!"
+            exit 1
+          fi
+          echo "CHROMEPATH=$CHROMEPATH" >> $GITHUB_ENV
+
+      # - name: Download and extract extensions
+      #   run: |
+      #     # 下载 extensions.zip (-s 参数让 curl 静默运行，不显示进度条和下载信息)
+      #     echo "Downloading extensions.zip..."
+      #     curl -s -L -o extensions.zip "${{ secrets.EXTENSIONS_DOWNLOAD_URL }}"
+          
+      #     # 检查下载是否成功 (-q 参数让 unzip 静默运行，不显示解压的详细文件列表)
+      #     if [ -f "extensions.zip" ]; then
+      #       echo "Download successful, extracting extensions..."
+      #       unzip -q -o extensions.zip
+      #       rm extensions.zip
+      #       echo "Extensions extracted successfully"
+      #     else
+      #       echo "Failed to download extensions.zip"
+      #       exit 1
+      #     fi
+
+      - name: Download script and cookies from private repo
+        run: |
+          source scripts/${{ env.API_SCRIPT }}
+
+          download_file "${{ env.SCRIPT_NAME }}.py" "${{ env.SCRIPT_NAME }}.py" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+          
+          if [ -f "${{ env.SCRIPT_NAME }}.py" ]; then
+            echo "Script file ${{ env.SCRIPT_NAME }}.py downloaded successfully"
+          else
+            echo "Failed to download script file ${{ env.SCRIPT_NAME }}.py"
+          fi
+          
+          mkdir -p tmp
+          
+          get_file_list "tmp" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}" "${{ env.COOKIE_NAME }}.*pkl" | \
+          while read file_path; do
+            if [ ! -z "$file_path" ]; then
+              download_file "$file_path" "tmp/$(basename $file_path)" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+            fi
+          done
+
+      - name: Run python script
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python3 ${{ env.SCRIPT_NAME }}.py
+        env:
+          CHROMEPATH: ${{ env.CHROMEPATH }}
+          ACCOUNT_SECRET: ${{ secrets[matrix.account] }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+
+      - name: Upload updated cookies to private repo
+        run: |
+          source scripts/${{ env.API_SCRIPT }}
+          
+          if [ -d "tmp" ] && [ "$(ls -A tmp)" ]; then
+            for file in tmp/*.pkl; do
+              if [ -f "$file" ]; then
+                upload_file "$file" "tmp/$(basename $file)" "${{ secrets.ACCESS_TOKEN }}" "${{ secrets.PRIVATE_REPO_OWNER }}" "${{ secrets.PRIVATE_REPO_NAME }}"
+              fi
+            done
+            echo "Successfully uploaded updated cookies to private repo"
+          else
+            echo "No files to upload"
+          fi
