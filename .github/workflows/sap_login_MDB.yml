@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  SCRIPT_NAME: saplogin
+  SCRIPT_NAME: sap_login
   API_SCRIPT: github_api.sh
 
 jobs:
