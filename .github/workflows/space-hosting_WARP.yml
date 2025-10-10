@@ -8,7 +8,7 @@ on:
 env:
   SCRIPT_NAME: space-hosting
   REQUIREMENTS_FILE: requirements_PR.txt
-  API_SCRIPT: github_api.sh
+  API_SCRIPT: github_api_debug.sh
   # STORAGE_ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN_SPACE_HOSTING }}
   # STORAGE_REPO_NAME: ${{ secrets.PRIVATE_REPO_NAME_SPACE_HOSTING }}
 
