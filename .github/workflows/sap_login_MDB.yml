@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  SCRIPT_NAME: sap_login
+  SCRIPT_NAME: saplogin
   API_SCRIPT: github_api.sh
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
           curl --socks5 127.0.0.1:8081 https://ifconfig.co/json
 
       - name: Install dependencies
-        run: pip install pytz requests beautifulsoup4
+        run: pip install requests[socks] pytz beautifulsoup4
 
       - name: Download script and cookies from private repo
         run: |
