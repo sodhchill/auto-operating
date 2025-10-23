@@ -2,7 +2,7 @@ name: nvidia
 
 on:
   schedule:
-    - cron: "42 */8 * * *"
+    - cron: "30 * * * *"
   workflow_dispatch:
 
 env:
@@ -51,5 +51,5 @@ jobs:
         run: python3 ${{ env.SCRIPT_NAME }}.py
         env:
           ACCOUNT_SECRET: ${{ secrets[matrix.ACCOUNT_SECRET] }}
-          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID_FREQUENT }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
