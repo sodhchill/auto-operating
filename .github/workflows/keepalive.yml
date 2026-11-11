@@ -8,7 +8,7 @@ on:
 jobs:
   keepalive:
     timeout-minutes: 20
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Create orphan keepalive branch with empty commit
         env:
